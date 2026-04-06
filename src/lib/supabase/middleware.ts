@@ -4,10 +4,13 @@ import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/types";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
-export function updateSession(request: NextRequest) {
-  const env = getSupabaseEnv();
+export async function updateSession(request: NextRequest) {
+  const env = getSupabaseEnv({ context: "supabase-middleware" });
 
   if (!env) {
+    console.error(
+      "[supabase] Middleware sem configuracao do Supabase. Rotas seguirao sem refresh de sessao.",
+    );
     return NextResponse.next({ request });
   }
 
@@ -26,8 +29,13 @@ export function updateSession(request: NextRequest) {
     },
   });
 
-  void supabase.auth.getUser();
+  // Await the auth refresh so Safari and other stricter browsers do not race
+  // against stale cookies during the first server render.
+  try {
+    await supabase.auth.getUser();
+  } catch (error) {
+    console.error("[supabase] Falha ao atualizar a sessao no middleware.", error);
+  }
 
   return response;
 }
-

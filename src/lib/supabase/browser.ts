@@ -8,9 +8,17 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
 let client: ReturnType<typeof createBrowserClient<Database>> | null = null;
 
 export function createSupabaseBrowserClient() {
-  const env = getSupabaseEnv();
+  if (typeof window === "undefined") {
+    console.warn("[supabase] createSupabaseBrowserClient chamado fora do browser.");
+    return null;
+  }
+
+  const env = getSupabaseEnv({ context: "supabase-browser-client" });
 
   if (!env) {
+    console.error(
+      "[supabase] Cliente browser nao inicializado. Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY na Vercel.",
+    );
     return null;
   }
 
@@ -20,4 +28,3 @@ export function createSupabaseBrowserClient() {
 
   return client;
 }
-

@@ -43,6 +43,10 @@ const defaultDraft: DraftItem = {
   unitPrice: "",
 };
 
+function isBrowser() {
+  return typeof window !== "undefined";
+}
+
 function normalizeWhatsappNumber(value: string) {
   return value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
 }
@@ -67,6 +71,10 @@ export function ShoppingApp({
   const [feedback, setFeedback] = useState("");
   const [isWhatsappOpen, setIsWhatsappOpen] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState("+351 ");
+
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
 
   const total = useMemo(() => calculateListTotal(items), [items]);
   const totalUnits = useMemo(() => getTotalUnits(items), [items]);
@@ -96,6 +104,7 @@ export function ShoppingApp({
     }
 
     const query = search.trim();
+    let isCurrent = true;
     const timeoutId = window.setTimeout(async () => {
       setSearchLoading(true);
 
@@ -108,8 +117,15 @@ export function ShoppingApp({
         .limit(6);
 
       if (error) {
-        setSuggestions([]);
-        setSearchLoading(false);
+        console.error("[shopping-app] Falha ao buscar sugestoes de produtos.", error);
+        if (isCurrent) {
+          setSuggestions([]);
+          setSearchLoading(false);
+        }
+        return;
+      }
+
+      if (!isCurrent) {
         return;
       }
 
@@ -117,7 +133,10 @@ export function ShoppingApp({
       setSearchLoading(false);
     }, 260);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
   }, [hasSearch, search, supabase]);
 
   useEffect(() => {
@@ -164,9 +183,11 @@ export function ShoppingApp({
     setDraft((current) => ({ ...current, name: product.name }));
     setSearch("");
     setSuggestions([]);
-    requestAnimationFrame(() => {
-      priceInputRef.current?.focus();
-    });
+    if (isBrowser()) {
+      window.requestAnimationFrame(() => {
+        priceInputRef.current?.focus();
+      });
+    }
   }
 
   async function incrementExistingItem(item: ShoppingItemRow) {
@@ -186,6 +207,7 @@ export function ShoppingApp({
         .eq("id", item.id)) ?? { error: new Error("Supabase indisponivel.") };
 
     if (error) {
+      console.error("[shopping-app] Falha ao incrementar item existente.", error);
       setOptimisticItems(previousItems);
       setFeedback(error.message);
       return false;
@@ -244,6 +266,9 @@ export function ShoppingApp({
     }
 
     if (error || !data) {
+      if (error) {
+        console.error("[shopping-app] Falha ao inserir item.", error);
+      }
       setFeedback(error?.message ?? "Nao foi possivel adicionar o item.");
       setBusyKey(null);
       return;
@@ -274,6 +299,7 @@ export function ShoppingApp({
       const { error } = await supabase.from("shopping_items").delete().eq("id", item.id);
 
       if (error) {
+        console.error("[shopping-app] Falha ao remover item ao zerar quantidade.", error);
         setOptimisticItems(previousItems);
         setFeedback(error.message);
       }
@@ -297,6 +323,7 @@ export function ShoppingApp({
       .eq("id", item.id);
 
     if (error) {
+      console.error("[shopping-app] Falha ao atualizar quantidade.", error);
       setOptimisticItems(previousItems);
       setFeedback(error.message);
     }
@@ -319,6 +346,7 @@ export function ShoppingApp({
     const { error } = await supabase.from("shopping_items").delete().eq("id", item.id);
 
     if (error) {
+      console.error("[shopping-app] Falha ao remover item.", error);
       setOptimisticItems(previousItems);
       setFeedback(error.message);
     }
@@ -328,6 +356,11 @@ export function ShoppingApp({
 
   async function clearList() {
     if (!supabase || !databaseReady || !hasItems) {
+      return;
+    }
+
+    if (!items.some((item) => item.id)) {
+      setItems([]);
       return;
     }
 
@@ -345,6 +378,7 @@ export function ShoppingApp({
       );
 
     if (error) {
+      console.error("[shopping-app] Falha ao limpar a lista.", error);
       setItems(previousItems);
       setFeedback(error.message);
     }
@@ -359,7 +393,15 @@ export function ShoppingApp({
     }
 
     setBusyKey("logout");
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("[shopping-app] Falha ao encerrar sessao.", error);
+      setFeedback("Nao foi possivel sair agora. Tente novamente.");
+      setBusyKey(null);
+      return;
+    }
+
     router.replace("/login");
     router.refresh();
   }
@@ -404,6 +446,10 @@ export function ShoppingApp({
 
     const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(whatsappMessage)}`;
     setIsWhatsappOpen(false);
+    if (!isBrowser()) {
+      return;
+    }
+
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
@@ -524,7 +570,8 @@ export function ShoppingApp({
 
           <button
             type="submit"
-            className="w-full rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+            disabled={busyKey?.startsWith("add-") || !databaseReady}
+            className="w-full rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-brand/60"
           >
             Adicionar rapido
           </button>
@@ -534,6 +581,12 @@ export function ShoppingApp({
       {feedback ? (
         <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {feedback}
+        </div>
+      ) : null}
+
+      {!feedback && !databaseReady && setupHint ? (
+        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {setupHint}
         </div>
       ) : null}
 
@@ -650,10 +703,10 @@ export function ShoppingApp({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleOpenWhatsapp}
-              className={cn(
+          <button
+            type="button"
+            onClick={handleOpenWhatsapp}
+            className={cn(
                 "shrink-0 rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark",
                 !hasItems && "cursor-not-allowed bg-brand/60 hover:bg-brand/60",
               )}

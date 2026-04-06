@@ -5,7 +5,7 @@ import { LoaderCircle, LockKeyhole, Mail, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
 type LoginScreenProps = {
   configured: boolean;
@@ -37,18 +37,28 @@ export function LoginScreen({ configured }: LoginScreenProps) {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    const response =
-      mode === "signin"
-        ? await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password,
-          })
-        : await supabase.auth.signUp({
-            email: normalizedEmail,
-            password,
-          });
+    let response;
+
+    try {
+      response =
+        mode === "signin"
+          ? await supabase.auth.signInWithPassword({
+              email: normalizedEmail,
+              password,
+            })
+          : await supabase.auth.signUp({
+              email: normalizedEmail,
+              password,
+            });
+    } catch (unexpectedError) {
+      console.error("[login-screen] Erro inesperado no fluxo de autenticacao.", unexpectedError);
+      setLoading(false);
+      setError("Nao foi possivel concluir o login agora. Tente novamente.");
+      return;
+    }
 
     if (response.error) {
+      console.error("[login-screen] Falha retornada pelo Supabase Auth.", response.error);
       setLoading(false);
       setError(response.error.message);
       return;
@@ -93,7 +103,7 @@ export function LoginScreen({ configured }: LoginScreenProps) {
                   <span>Itens no carrinho</span>
                   <span>8</span>
                 </div>
-                <p className="mt-2 text-2xl font-semibold">R$ 126,40</p>
+                <p className="mt-2 text-2xl font-semibold">{formatCurrency(126.4)}</p>
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div className="rounded-2xl bg-white/10 p-3 text-center">Cards compactos</div>

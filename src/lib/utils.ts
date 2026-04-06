@@ -1,11 +1,27 @@
 import type { ShoppingItemRow } from "@/lib/types";
 
+const currencyFormatter = (() => {
+  try {
+    return new Intl.NumberFormat("pt-PT", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  } catch (error) {
+    console.error("[utils] Falha ao inicializar Intl.NumberFormat para pt-PT/EUR.", error);
+    return null;
+  }
+})();
+
 export function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-PT", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-  }).format(value);
+  const normalizedValue = Number.isFinite(value) ? value : 0;
+
+  if (!currencyFormatter) {
+    return `EUR ${normalizedValue.toFixed(2)}`;
+  }
+
+  return currencyFormatter.format(normalizedValue);
 }
 
 export function cn(...classes: Array<string | false | null | undefined>) {

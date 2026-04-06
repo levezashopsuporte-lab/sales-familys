@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@/lib/utils";
 import { getProductIcon, getProductTone } from "@/lib/product-icons";
 import type { ProductIcon } from "@/lib/types";
