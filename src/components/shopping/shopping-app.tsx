@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderCircle,
   LogOut,
@@ -43,6 +43,10 @@ const defaultDraft: DraftItem = {
   unitPrice: "",
 };
 
+function normalizeWhatsappNumber(value: string) {
+  return value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+}
+
 export function ShoppingApp({
   initialItems,
   userEmail,
@@ -52,6 +56,7 @@ export function ShoppingApp({
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const priceInputRef = useRef<HTMLInputElement | null>(null);
+  const whatsappInputRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState<ShoppingItemRow[]>(initialItems);
   const [draft, setDraft] = useState<DraftItem>(defaultDraft);
   const [search, setSearch] = useState("");
@@ -60,11 +65,28 @@ export function ShoppingApp({
   const [searchLoading, setSearchLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [isWhatsappOpen, setIsWhatsappOpen] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState("+351 ");
 
   const total = useMemo(() => calculateListTotal(items), [items]);
   const totalUnits = useMemo(() => getTotalUnits(items), [items]);
   const hasItems = items.length > 0;
   const hasSearch = search.trim().length > 0;
+  const whatsappMessage = useMemo(() => {
+    const lines = [
+      "Lista de compras",
+      "",
+      ...items.map(
+        (item) =>
+          `- ${item.name}: ${item.quantity} x ${formatCurrency(item.unit_price)} = ${formatCurrency(calculateItemSubtotal(item))}`,
+      ),
+      "",
+      `Total geral: ${formatCurrency(total)}`,
+      `Total de unidades: ${totalUnits}`,
+    ];
+
+    return lines.join("\n");
+  }, [items, total, totalUnits]);
 
   useEffect(() => {
     if (!supabase || !hasSearch) {
@@ -97,6 +119,33 @@ export function ShoppingApp({
 
     return () => window.clearTimeout(timeoutId);
   }, [hasSearch, search, supabase]);
+
+  useEffect(() => {
+    if (!isWhatsappOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      whatsappInputRef.current?.focus();
+      whatsappInputRef.current?.setSelectionRange(
+        whatsappInputRef.current.value.length,
+        whatsappInputRef.current.value.length,
+      );
+    }, 40);
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsWhatsappOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isWhatsappOpen]);
 
   function setOptimisticItems(nextItems: ShoppingItemRow[]) {
     setItems([...nextItems].sort((left, right) => right.updated_at.localeCompare(left.updated_at)));
@@ -331,6 +380,31 @@ export function ShoppingApp({
       category: selectedProduct?.category ?? null,
       icon: getCategoryIcon(selectedProduct?.category),
     });
+  }
+
+  function handleOpenWhatsapp() {
+    if (!hasItems) {
+      return;
+    }
+
+    setFeedback("");
+    setIsWhatsappOpen(true);
+  }
+
+  function handleSendToWhatsapp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalizedValue = normalizeWhatsappNumber(whatsappNumber.trim());
+    const digits = normalizedValue.replace(/\D/g, "");
+
+    if (!digits || digits.length < 8 || !normalizedValue.startsWith("+")) {
+      setFeedback("Informe um numero de WhatsApp com prefixo do pais. Ex.: +351912345678");
+      return;
+    }
+
+    const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(whatsappMessage)}`;
+    setIsWhatsappOpen(false);
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -578,7 +652,7 @@ export function ShoppingApp({
 
             <button
               type="button"
-              onClick={() => startTransition(() => router.refresh())}
+              onClick={handleOpenWhatsapp}
               className={cn(
                 "shrink-0 rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark",
                 !hasItems && "cursor-not-allowed bg-brand/60 hover:bg-brand/60",
@@ -590,6 +664,70 @@ export function ShoppingApp({
           </div>
         </div>
       </footer>
+
+      {isWhatsappOpen ? (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-950/28 p-4 backdrop-blur-[2px] sm:items-center sm:px-5">
+          <div className="w-full max-w-md rounded-[1.8rem] border border-white/80 bg-white/96 p-4 shadow-[0_30px_80px_-26px_rgba(15,23,42,0.35)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-ink">Enviar para WhatsApp</p>
+                <p className="mt-1 text-xs text-muted">
+                  Informe o numero com prefixo do pais para abrir a mensagem pronta.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWhatsappOpen(false)}
+                className="rounded-full px-2 py-1 text-xs font-semibold text-muted transition hover:bg-canvas"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <form className="mt-4 space-y-3" onSubmit={handleSendToWhatsapp}>
+              <div className="space-y-1.5">
+                <label htmlFor="whatsapp-number" className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                  Numero de WhatsApp
+                </label>
+                <input
+                  id="whatsapp-number"
+                  ref={whatsappInputRef}
+                  value={whatsappNumber}
+                  onChange={(event) => setWhatsappNumber(normalizeWhatsappNumber(event.target.value))}
+                  inputMode="tel"
+                  placeholder="+351 912345678"
+                  className="w-full rounded-2xl border border-line/90 bg-canvas/85 px-3 py-3 text-sm outline-none placeholder:text-muted focus:border-brand focus:bg-white"
+                />
+              </div>
+
+              <div className="rounded-2xl border border-line/80 bg-canvas/70 px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Resumo enviado
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink">{items.length} itens</p>
+                <p className="mt-1 text-sm text-muted">{totalUnits} unidades</p>
+                <p className="mt-2 text-base font-semibold text-ink">{formatCurrency(total)}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWhatsappOpen(false)}
+                  className="flex-1 rounded-2xl border border-line/90 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-canvas"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                >
+                  Abrir WhatsApp
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
