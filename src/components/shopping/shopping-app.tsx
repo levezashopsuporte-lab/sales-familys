@@ -284,7 +284,7 @@ export function ShoppingApp({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-32 pt-4 sm:px-5">
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-36 pt-4 sm:px-5">
       <header className="mb-4 rounded-[1.75rem] border border-white/80 bg-white/85 p-4 shadow-card backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -498,34 +498,36 @@ export function ShoppingApp({
       </section>
 
       <footer className="safe-pb fixed inset-x-0 bottom-0 z-20 mx-auto w-full max-w-md px-4 pb-4 sm:px-5">
-        <div className="rounded-[1.8rem] border border-emerald-200/80 bg-white/94 p-4 shadow-float backdrop-blur">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand text-white">
-                <ReceiptText className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-muted">Total geral</p>
-                <p className="text-2xl font-semibold text-ink">{formatCurrency(total)}</p>
-              </div>
+        <div className="rounded-[1.7rem] border border-emerald-200/80 bg-white/94 p-3 shadow-float backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand text-white">
+              <ReceiptText className="h-4.5 w-4.5" />
             </div>
-            <div className="text-right text-xs text-muted">
-              <p>{items.length} itens</p>
-              <p>{totalUnits} unidades</p>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => startTransition(() => router.refresh())}
-            className={cn(
-              "w-full rounded-2xl bg-brand px-4 py-3.5 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark",
-              items.length === 0 && "cursor-not-allowed bg-brand/60 hover:bg-brand/60",
-            )}
-            disabled={items.length === 0}
-          >
-            Finalizar lista
-          </button>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Total geral</p>
+              <div className="flex items-end justify-between gap-2">
+                <p className="truncate text-xl font-semibold leading-none text-ink">
+                  {formatCurrency(total)}
+                </p>
+                <p className="text-right text-[11px] text-muted">
+                  {items.length} itens • {totalUnits} un.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => startTransition(() => router.refresh())}
+              className={cn(
+                "shrink-0 rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark",
+                items.length === 0 && "cursor-not-allowed bg-brand/60 hover:bg-brand/60",
+              )}
+              disabled={items.length === 0}
+            >
+              Finalizar
+            </button>
+          </div>
         </div>
       </footer>
     </main>
