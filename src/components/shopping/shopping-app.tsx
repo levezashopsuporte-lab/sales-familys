@@ -450,7 +450,7 @@ export function ShoppingApp({
 
           <button
             type="submit"
-            className="w-full rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-ink/92"
+            className="w-full rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
           >
             Adicionar rapido
           </button>
