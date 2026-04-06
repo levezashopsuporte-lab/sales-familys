@@ -396,7 +396,7 @@ export function ShoppingApp({
             </div>
 
             {hasSearch ? (
-              <div className="absolute inset-x-0 top-[calc(100%+0.45rem)] z-10 overflow-hidden rounded-[1.35rem] border border-white/90 bg-white/96 shadow-float backdrop-blur">
+              <div className="absolute inset-x-0 top-[calc(100%+0.45rem)] z-10 overflow-hidden rounded-[1.35rem] border border-white/70 bg-[rgba(156,163,175,0.8)] shadow-[0_22px_50px_-22px_rgba(15,23,42,0.45)] backdrop-blur-md">
                 {suggestions.length > 0 ? (
                   <div className="max-h-72 overflow-y-auto p-1.5">
                     {suggestions.map((product) => (
@@ -404,7 +404,7 @@ export function ShoppingApp({
                         key={product.id}
                         type="button"
                         onClick={() => handleSuggestionSelect(product)}
-                        className="flex w-full items-center gap-3 rounded-[1rem] px-2.5 py-2.5 text-left transition hover:bg-canvas/90"
+                        className="flex w-full items-center gap-3 rounded-[1rem] bg-white/88 px-2.5 py-2.5 text-left transition hover:bg-white"
                       >
                         <ProductAvatar
                           icon={getCategoryIcon(product.category)}
@@ -420,7 +420,7 @@ export function ShoppingApp({
                     ))}
                   </div>
                 ) : (
-                  <div className="px-3 py-3 text-sm text-muted">Sem produtos encontrados.</div>
+                  <div className="px-3 py-3 text-sm text-slate-700">Sem produtos encontrados.</div>
                 )}
               </div>
             ) : null}
