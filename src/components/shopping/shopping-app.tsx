@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderCircle,
   LogOut,
@@ -15,9 +15,9 @@ import {
 import { useRouter } from "next/navigation";
 
 import { ProductAvatar } from "@/components/ui/product-avatar";
-import { quickAddProducts } from "@/lib/catalog";
+import { getCategoryIcon, getProductSubtitle } from "@/lib/products";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import type { ProductIcon, ShoppingItemRow } from "@/lib/types";
+import type { ProductIcon, ProductRow, ShoppingItemRow } from "@/lib/types";
 import {
   calculateItemSubtotal,
   calculateListTotal,
@@ -51,28 +51,73 @@ export function ShoppingApp({
 }: ShoppingAppProps) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const priceInputRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState<ShoppingItemRow[]>(initialItems);
   const [draft, setDraft] = useState<DraftItem>(defaultDraft);
   const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState<ProductRow[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
-
-  const filteredItems = useMemo(() => {
-    const normalizedQuery = search.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return items;
-    }
-
-    return items.filter((item) => item.name.toLowerCase().includes(normalizedQuery));
-  }, [items, search]);
 
   const total = useMemo(() => calculateListTotal(items), [items]);
   const totalUnits = useMemo(() => getTotalUnits(items), [items]);
   const hasItems = items.length > 0;
+  const hasSearch = search.trim().length > 0;
+
+  useEffect(() => {
+    if (!supabase || !hasSearch) {
+      setSuggestions([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    const query = search.trim();
+    const timeoutId = window.setTimeout(async () => {
+      setSearchLoading(true);
+
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("is_active", true)
+        .ilike("name", `%${query}%`)
+        .order("name")
+        .limit(6);
+
+      if (error) {
+        setSuggestions([]);
+        setSearchLoading(false);
+        return;
+      }
+
+      setSuggestions(data ?? []);
+      setSearchLoading(false);
+    }, 260);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [hasSearch, search, supabase]);
 
   function setOptimisticItems(nextItems: ShoppingItemRow[]) {
     setItems([...nextItems].sort((left, right) => right.updated_at.localeCompare(left.updated_at)));
+  }
+
+  function syncDraftName(name: string) {
+    setDraft((current) => ({ ...current, name }));
+
+    if (selectedProduct && selectedProduct.name !== name) {
+      setSelectedProduct(null);
+    }
+  }
+
+  function handleSuggestionSelect(product: ProductRow) {
+    setSelectedProduct(product);
+    setDraft((current) => ({ ...current, name: product.name }));
+    setSearch("");
+    setSuggestions([]);
+    requestAnimationFrame(() => {
+      priceInputRef.current?.focus();
+    });
   }
 
   async function incrementExistingItem(item: ShoppingItemRow) {
@@ -103,7 +148,7 @@ export function ShoppingApp({
   async function addOrIncrementItem(params: {
     name: string;
     unitPrice: number;
-    category: string;
+    category: string | null;
     icon: ProductIcon;
   }) {
     if (!supabase || !databaseReady) {
@@ -157,6 +202,9 @@ export function ShoppingApp({
 
     setOptimisticItems([data, ...items]);
     setDraft(defaultDraft);
+    setSelectedProduct(null);
+    setSearch("");
+    setSuggestions([]);
     setBusyKey(null);
   }
 
@@ -280,8 +328,8 @@ export function ShoppingApp({
     await addOrIncrementItem({
       name: draft.name.trim(),
       unitPrice: parsedPrice,
-      category: "Personalizado",
-      icon: "sparkles",
+      category: selectedProduct?.category ?? null,
+      icon: getCategoryIcon(selectedProduct?.category),
     });
   }
 
@@ -298,7 +346,7 @@ export function ShoppingApp({
               Mercado da semana
             </h1>
             <p className="mt-1 truncate text-sm text-muted">
-              {userEmail ?? "Sua lista sincronizada em tempo real"}
+              {userEmail ?? "A sua lista sincronizada em tempo real"}
             </p>
           </div>
 
@@ -335,24 +383,58 @@ export function ShoppingApp({
 
       <section className="mb-3 rounded-[1.7rem] border border-white/80 bg-white/82 p-3 shadow-card backdrop-blur">
         <form className="space-y-2.5" onSubmit={handleCustomAdd}>
-          <div className="flex items-center gap-2 rounded-2xl border border-line/90 bg-canvas/85 px-3 py-3">
-            <Search className="h-4 w-4 text-muted" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar item"
-              className="w-full border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted"
-            />
+          <div className="relative">
+            <div className="flex items-center gap-2 rounded-2xl border border-line/90 bg-canvas/85 px-3 py-3">
+              <Search className="h-4 w-4 text-muted" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar item"
+                className="w-full border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted"
+              />
+              {searchLoading ? <LoaderCircle className="h-4 w-4 animate-spin text-muted" /> : null}
+            </div>
+
+            {hasSearch ? (
+              <div className="absolute inset-x-0 top-[calc(100%+0.45rem)] z-10 overflow-hidden rounded-[1.35rem] border border-white/90 bg-white/96 shadow-float backdrop-blur">
+                {suggestions.length > 0 ? (
+                  <div className="max-h-72 overflow-y-auto p-1.5">
+                    {suggestions.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => handleSuggestionSelect(product)}
+                        className="flex w-full items-center gap-3 rounded-[1rem] px-2.5 py-2.5 text-left transition hover:bg-canvas/90"
+                      >
+                        <ProductAvatar
+                          icon={getCategoryIcon(product.category)}
+                          className="h-9 w-9 rounded-[0.9rem]"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{product.name}</p>
+                          <p className="truncate text-[11px] text-muted">
+                            {getProductSubtitle(product)}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-3 text-sm text-muted">Sem produtos encontrados.</div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-[1fr_108px] gap-2">
             <input
               value={draft.name}
-              onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+              onChange={(event) => syncDraftName(event.target.value)}
               placeholder="Novo item"
               className="rounded-2xl border border-line/90 bg-canvas/85 px-3 py-3 text-sm outline-none placeholder:text-muted focus:border-brand focus:bg-white"
             />
             <input
+              ref={priceInputRef}
               value={draft.unitPrice}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -375,41 +457,6 @@ export function ShoppingApp({
         </form>
       </section>
 
-      <section className="mb-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-ink">Sugestoes</p>
-            <p className="text-[11px] text-muted">Toque para somar sem sair da tela</p>
-          </div>
-          <p className="text-[11px] font-medium text-muted">Acesso rapido</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {quickAddProducts.map((product) => (
-            <button
-              key={product.name}
-              type="button"
-              onClick={() =>
-                addOrIncrementItem({
-                  name: product.name,
-                  unitPrice: product.unitPrice,
-                  category: product.category,
-                  icon: product.icon,
-                })
-              }
-              disabled={busyKey === `add-${product.name}`}
-              className="flex items-center gap-3 rounded-[1.35rem] border border-white/80 bg-white/88 px-3 py-2.5 text-left shadow-card backdrop-blur transition hover:-translate-y-0.5 disabled:cursor-not-allowed"
-            >
-              <ProductAvatar icon={product.icon} className="h-10 w-10 rounded-[1rem]" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold leading-tight text-ink">{product.name}</p>
-                <p className="mt-0.5 text-xs text-muted">{formatCurrency(product.unitPrice)}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
       {feedback ? (
         <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {feedback}
@@ -419,8 +466,8 @@ export function ShoppingApp({
       <section className="flex-1">
         <div className="mb-2 flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-ink">Sua lista</p>
-            <p className="text-[11px] text-muted">Cards compactos e leitura rapida</p>
+            <p className="text-sm font-semibold text-ink">Lista atual</p>
+            <p className="text-[11px] text-muted">Somente os itens adicionados nesta compra</p>
           </div>
           <button
             type="button"
@@ -433,28 +480,57 @@ export function ShoppingApp({
         </div>
 
         <div className="space-y-2.5">
-          {filteredItems.length > 0 ? (
-            filteredItems.map((item) => (
+          {items.length > 0 ? (
+            items.map((item) => (
               <article
                 key={item.id}
-                className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[1.45rem] border border-white/80 bg-white/90 px-3 py-2.5 shadow-card backdrop-blur"
+                className="grid grid-cols-[auto_1fr] gap-3 rounded-[1.45rem] border border-white/80 bg-white/90 px-3 py-2.5 shadow-card backdrop-blur"
               >
                 <ProductAvatar icon={item.icon} className="h-11 w-11 rounded-[1rem]" />
 
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-ink">{item.name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{item.name}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {formatCurrency(item.unit_price)} / unidade
+                      </p>
+                    </div>
                     <p className="shrink-0 text-sm font-semibold text-ink">
                       {formatCurrency(calculateItemSubtotal(item))}
                     </p>
                   </div>
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted">{formatCurrency(item.unit_price)} / unidade</p>
+
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 rounded-full border border-line/90 bg-canvas/90 p-1">
+                      <button
+                        type="button"
+                        onClick={() => changeQuantity(item, -1)}
+                        disabled={busyKey === item.id}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink shadow-sm disabled:opacity-60"
+                        aria-label={`Diminuir ${item.name}`}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                      <span className="min-w-7 text-center text-sm font-semibold text-ink">
+                        {item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => changeQuantity(item, 1)}
+                        disabled={busyKey === item.id}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white shadow-sm disabled:opacity-60"
+                        aria-label={`Aumentar ${item.name}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => removeItem(item)}
                       disabled={busyKey === item.id}
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-canvas disabled:opacity-50"
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-canvas disabled:opacity-50"
                       aria-label={`Remover ${item.name}`}
                     >
                       {busyKey === item.id ? (
@@ -465,30 +541,6 @@ export function ShoppingApp({
                     </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-1 rounded-full border border-line/90 bg-canvas/90 p-1">
-                  <button
-                    type="button"
-                    onClick={() => changeQuantity(item, -1)}
-                    disabled={busyKey === item.id}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink shadow-sm disabled:opacity-60"
-                    aria-label={`Diminuir ${item.name}`}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </button>
-                  <span className="min-w-7 text-center text-sm font-semibold text-ink">
-                    {item.quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => changeQuantity(item, 1)}
-                    disabled={busyKey === item.id}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-white shadow-sm disabled:opacity-60"
-                    aria-label={`Aumentar ${item.name}`}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
               </article>
             ))
           ) : (
@@ -496,9 +548,9 @@ export function ShoppingApp({
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand-dark">
                 <ShoppingBasket className="h-6 w-6" />
               </div>
-              <p className="mt-4 text-sm font-semibold text-ink">Lista vazia</p>
+              <p className="mt-4 text-sm font-semibold text-ink">Nenhum item adicionado</p>
               <p className="mt-2 text-sm text-muted">
-                Use as sugestoes acima ou crie um item personalizado.
+                Pesquise um produto, preencha o preco e adicione rapidamente.
               </p>
             </div>
           )}

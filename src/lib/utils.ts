@@ -1,9 +1,9 @@
 import type { ShoppingItemRow } from "@/lib/types";
 
 export function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+  return new Intl.NumberFormat("pt-PT", {
     style: "currency",
-    currency: "BRL",
+    currency: "EUR",
     minimumFractionDigits: 2,
   }).format(value);
 }

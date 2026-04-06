@@ -8,6 +8,15 @@ export type ProductIcon =
   | "carrot"
   | "sparkles";
 
+export type ProductRow = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  is_active: boolean;
+  created_at: string;
+};
+
 export type ShoppingItemRow = {
   id: string;
   user_id: string;
@@ -24,16 +33,27 @@ export type ShoppingItem = ShoppingItemRow & {
   subtotal: number;
 };
 
-export type CatalogProduct = {
-  name: string;
-  icon: ProductIcon;
-  unitPrice: number;
-  category: string;
-};
-
 export type Database = {
   public: {
     Tables: {
+      products: {
+        Row: ProductRow;
+        Insert: {
+          id?: string;
+          name: string;
+          category: string;
+          unit?: string;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          category?: string;
+          unit?: string;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
       shopping_items: {
         Row: ShoppingItemRow;
         Insert: {
