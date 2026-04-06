@@ -74,6 +74,30 @@ export function ShoppingApp({
     setItems([...nextItems].sort((left, right) => right.updated_at.localeCompare(left.updated_at)));
   }
 
+  async function incrementExistingItem(item: ShoppingItemRow) {
+    const previousItems = items;
+    const optimisticItem = {
+      ...item,
+      quantity: item.quantity + 1,
+      updated_at: new Date().toISOString(),
+    };
+
+    setOptimisticItems(items.map((entry) => (entry.id === item.id ? optimisticItem : entry)));
+
+    const { error } = await supabase
+      ?.from("shopping_items")
+      .update({ quantity: optimisticItem.quantity, updated_at: optimisticItem.updated_at })
+      .eq("id", item.id) ?? { error: new Error("Supabase indisponivel.") };
+
+    if (error) {
+      setOptimisticItems(previousItems);
+      setFeedback(error.message);
+      return false;
+    }
+
+    return true;
+  }
+
   async function addOrIncrementItem(params: {
     name: string;
     unitPrice: number;
@@ -91,25 +115,7 @@ export function ShoppingApp({
     const existing = items.find((item) => item.name.toLowerCase() === params.name.toLowerCase());
 
     if (existing) {
-      const previousItems = items;
-      const optimisticItem = {
-        ...existing,
-        quantity: existing.quantity + 1,
-        updated_at: new Date().toISOString(),
-      };
-
-      setOptimisticItems(items.map((item) => (item.id === existing.id ? optimisticItem : item)));
-
-      const { error } = await supabase
-        .from("shopping_items")
-        .update({ quantity: optimisticItem.quantity, updated_at: optimisticItem.updated_at })
-        .eq("id", existing.id);
-
-      if (error) {
-        setOptimisticItems(previousItems);
-        setFeedback(error.message);
-      }
-
+      await incrementExistingItem(existing);
       setBusyKey(null);
       return;
     }
@@ -125,6 +131,21 @@ export function ShoppingApp({
       })
       .select()
       .single();
+
+    if (error?.code === "23505") {
+      const { data: duplicate } = await supabase
+        .from("shopping_items")
+        .select("*")
+        .ilike("name", params.name)
+        .limit(1)
+        .maybeSingle();
+
+      if (duplicate) {
+        await incrementExistingItem(duplicate);
+        setBusyKey(null);
+        return;
+      }
+    }
 
     if (error || !data) {
       setFeedback(error?.message ?? "Nao foi possivel adicionar o item.");
